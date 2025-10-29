@@ -1,0 +1,178 @@
+package main
+
+import (
+	"fmt"
+	"image"
+	"image/color"
+	_ "image/png"
+	"log"
+	"math"
+	"sort"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+)
+
+// Simple constants for tile size in pixels (common is 64x32 for 2:1 tiles).
+const (
+	TileW = 64
+	TileH = 32
+	MapW  = 10
+	MapH  = 10
+)
+
+type Drawable struct {
+	img     *ebiten.Image
+	screenX float64
+	screenY float64
+	depth   float64
+	op      *ebiten.DrawImageOptions
+}
+
+type Game struct {
+	tileset          *ebiten.Image
+	mapData          [MapW][MapH]int
+	cameraX, cameraY float64
+}
+
+func loadImage(path string) *ebiten.Image {
+	img, _, err := ebitenutil.NewImageFromFile(path)
+	if err != nil {
+		log.Fatalf("load image: %v", err)
+	}
+	return img
+}
+
+// Convert tile coords to screen pixel coords (top-left origin).
+func tileToScreen(tx, ty int) (float64, float64) {
+	// center origin can be added if you want map offset.
+	x := float64(tx-ty) * (TileW / 4)
+	y := float64(tx+ty) * (TileH / 4)
+	return x, y
+}
+
+// Optionally convert screen to tile (approximate; use carefully if camera/scaling).
+func screenToTile(sx, sy float64) (int, int) {
+	// invert the tileToScreen matrix for common diamond map:
+	// tx = (sx / (TileW/2) + sy/(TileH/2)) / 2
+	// ty = (sy/(TileH/2) - sx/(TileW/2)) / 2
+	a := sx / (TileW / 2.0)
+	b := sy / (TileH / 2.0)
+	tx := int(math.Floor((a + b) / 2.0))
+	ty := int(math.Floor((b - a) / 2.0))
+	return tx, ty
+}
+
+func NewGame() *Game {
+	g := &Game{
+		tileset: loadImage("cmd/tests/tile_000.png"), // provide a tileset PNG with at least one tile
+	}
+	// fill sample map (tile indices)
+	for x := 0; x < MapW; x++ {
+		for y := 0; y < MapH; y++ {
+			g.mapData[x][y] = 0 // single tile index
+		}
+	}
+	return g
+}
+
+func (g *Game) Update() error {
+	// simple camera pan with arrow keys
+	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
+		g.cameraX -= 4
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyRight) {
+		g.cameraX += 4
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+		g.cameraY -= 4
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+		g.cameraY += 4
+	}
+	return nil
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+	// Build list of drawables: all tiles and any sprites/objects.
+	var list []Drawable
+
+	screen.Fill(color.White)
+
+	// Example: slice first tile from tileset (assume tileset with tiles in a single row)
+	tileImg := g.tileset.SubImage(image.Rect(0, 0, TileW, TileH)).(*ebiten.Image)
+
+	for x := 0; x < MapW; x++ {
+		for y := 0; y < MapH; y++ {
+			sx, sy := tileToScreen(x, y)
+			// offset to center map on screen (add half screen, or camera)
+			screenX := sx + float64(screen.Bounds().Dx()/2) + g.cameraX
+			screenY := sy + float64(50) + g.cameraY // 50 is a vertical offset so map isn't top-left
+
+			// depth: use tile row (x+y). If you have tall objects, add their z.
+			depth := float64(x + y)
+
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(screenX, screenY)
+			list = append(list, Drawable{
+				img:     tileImg,
+				screenX: screenX,
+				screenY: screenY,
+				depth:   depth,
+				op:      op,
+			})
+		}
+	}
+
+	// Example: add a sprite that stands at tile (4,4) but slightly above ground (z)
+	// Load sprite image elsewhere; here assume tileImg used as placeholder.
+	// spriteX, spriteY := tileToScreen(4, 4)
+	// spriteScreenX := spriteX + float64(screen.Bounds().Dx()/2) + g.cameraX
+	// spriteScreenY := spriteY + float64(50) + g.cameraY - 24 // -24 to lift sprite above tile
+	// spriteDepth := float64(4+4) + 0.5                       // object sits above the tile a bit
+	// op := &ebiten.DrawImageOptions{}
+	// op.GeoM.Translate(spriteScreenX, spriteScreenY)
+	// list = append(list, Drawable{
+	// 	img:     tileImg,
+	// 	screenX: spriteScreenX,
+	// 	screenY: spriteScreenY,
+	// 	depth:   spriteDepth,
+	// 	op:      op,
+	// })
+
+	// sort by depth ascending -> draw back to front
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].depth == list[j].depth {
+			// tie-breaker: by screenY then screenX for stable ordering
+			if list[i].screenY == list[j].screenY {
+				return list[i].screenX < list[j].screenX
+			}
+			return list[i].screenY < list[j].screenY
+		}
+		return list[i].depth < list[j].depth
+	})
+
+	// Draw in order
+	for _, d := range list {
+		screen.DrawImage(d.img, d.op)
+	}
+
+	// debug: show mouse -> tile
+	mx, my := ebiten.CursorPosition()
+	tx, ty := screenToTile(float64(mx)-float64(screen.Bounds().Dx()/2)-g.cameraX, float64(my)-50-g.cameraY)
+	ebitenutil.DebugPrint(screen, "Mouse tile: "+fmt.Sprintf("%d,%d", tx, ty))
+}
+
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	// logical screen size
+	return 800, 600
+}
+
+func main() {
+	ebiten.SetWindowSize(800, 600)
+	ebiten.SetWindowTitle("Isometric demo (Ebitengine)")
+	g := NewGame()
+	if err := ebiten.RunGame(g); err != nil {
+		log.Fatal(err)
+	}
+}
