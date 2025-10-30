@@ -74,15 +74,23 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	for tileY := 0; tileY < heightInTiles; tileY++ {
 		for tileX := 0; tileX < widthInTiles; tileX++ {
 
+			var isObj bool
+			id := g.layers[LayerObjects][tileY][tileX]
+			if img, ok := g.tileSet[id]; ok && img != nil {
+				isObj = true
+			}
+
 			// --- Ground layer ---
-			id := g.layers[LayerGround][tileY][tileX]
+			id = g.layers[LayerGround][tileY][tileX]
 			if img, ok := g.tileSet[id]; ok {
 				opts := &ebiten.DrawImageOptions{}
 				screenX := (float64(tileX)*0.5*tileWidth + float64(tileY)*-0.5*tileHeight) + centerX
 				screenY := (float64(tileX)*0.25*tileWidth + float64(tileY)*0.25*tileHeight) + centerY
 				opts.GeoM.Translate(screenX-anchorX, screenY-anchorY)
 
-				if tileX == g.selectedTileX && tileY == g.selectedTileY {
+				// Highlight logic using else if
+				if tileX == g.selectedTileX && tileY == g.selectedTileY && !isObj {
+					// Base highlight for selected tile (yellow)
 					opts.ColorScale.Scale(1.5, 1.5, 0.5, 1.0)
 				}
 				screen.DrawImage(img, opts)
@@ -92,9 +100,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			id = g.layers[LayerObjects][tileY][tileX]
 			if img, ok := g.tileSet[id]; ok {
 				opts := &ebiten.DrawImageOptions{}
-				screenX := (float64(tileX)*0.5*tileWidth + float64(tileY)*-0.5*tileHeight) + centerX - 32  // Offset for object width
-				screenY := (float64(tileX)*0.25*tileWidth + float64(tileY)*0.25*tileHeight) + centerY - 32 // Offset for object height
+				screenX := (float64(tileX)*0.5*tileWidth + float64(tileY)*-0.5*tileHeight) + centerX
+				screenY := (float64(tileX)*0.25*tileWidth + float64(tileY-2)*0.25*tileHeight) + centerY // Offset with magic number -2 to align objects
 				opts.GeoM.Translate(screenX-anchorX, screenY-anchorY)
+
+				// Highlight logic using else if
+				if tileX == g.selectedTileX && tileY == g.selectedTileY && isObj {
+					// Base highlight for selected tile (yellow)
+					opts.ColorScale.Scale(1.5, 0.5, 0.5, 1.0)
+				}
+
 				screen.DrawImage(img, opts)
 			}
 		}
