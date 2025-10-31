@@ -1,28 +1,10 @@
-package main
+package chunkfs
 
 import (
 	"encoding/csv"
 	"os"
 	"strconv"
 )
-
-type LayerType int
-
-const (
-	LayerGround    = 0 // Base floor tiles
-	LayerObjects   = 1 // Props, trees, walls
-	LayerCollision = 2 // Not drawn; for logic
-)
-
-type MapChunk struct {
-	Width, Height int
-	Layers        map[LayerType][][]int // Each layer is a 2D grid of tile IDs
-}
-
-type Map struct {
-	width, height int
-	tiles         [][]int
-}
 
 func LoadCSVLayer(path string) ([][]int, error) {
 	file, err := os.Open(path)

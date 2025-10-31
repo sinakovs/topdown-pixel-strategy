@@ -3,43 +3,68 @@ package game
 import (
 	"image/color"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/vector"
-	"github.com/sinakovs/topdown-pixel-strategy/internal/assets"
+	"github.com/hajimehoshi/ebiten"
 )
 
-func (g *Game) Draw(screen *ebiten.Image) {
-	screen.DrawImage(assets.BackgroundImg, nil)
-	g.drawGrid(screen)
-	g.drawUnit(screen)
-	ebitenutil.DebugPrintAt(screen, "Click to move soldier", 5, 5)
+type Drawable struct {
+	img  *ebiten.Image
+	opts *ebiten.DrawImageOptions
 }
 
-func (g *Game) drawGrid(screen *ebiten.Image) {
-	lineColor := color.RGBA{50, 50, 50, 100}
-	for i := 0; i <= screenWidth/gridSize; i++ {
-		vector.StrokeLine(screen, float32(i*gridSize), 0, float32(i*gridSize), float32(screenHeight), 1, lineColor, false)
-	}
-	for j := 0; j <= screenHeight/gridSize; j++ {
-		vector.StrokeLine(screen, 0, float32(j*gridSize), float32(screenWidth), float32(j*gridSize), 1, lineColor, false)
+// Isometric projection formula:
+// https://www.youtube.com/watch?v=04oQ2jOUjkU
+func (g *game) Draw(screen *ebiten.Image) {
+	screen.Fill(color.RGBA{20, 20, 20, 255}) // background
+
+	centerX := float64(screenWidth) / 2
+	centerY := float64(screenHeight) / 4
+	anchorX := float64(tileWidth) / 2
+	widthInTiles := len(g.layers[LayerGround][0])
+	heightInTiles := len(g.layers[LayerGround])
+
+	for y := 0; y < heightInTiles; y++ {
+		for x := 0; x < widthInTiles; x++ {
+			g.drawTile(screen, x, y, centerX, centerY, anchorX, false) // ground
+			g.drawTile(screen, x, y, centerX, centerY, anchorX, true)  // object
+		}
 	}
 }
 
-func (g *Game) drawUnit(screen *ebiten.Image) {
-	x, y := float64(g.unit.x*unitGridSize), float64(g.unit.y*unitGridSize)
+// drawTile renders either a ground or object tile at (x, y).
+func (g *game) drawTile(
+	screen *ebiten.Image,
+	x, y int,
+	centerX, centerY, anchorX float64,
+	isObject bool,
+) {
+	layer := LayerGround
+	yOffset := 0.0
 
-	// Draw selection rectangle
-	vector.StrokeRect(screen, float32(x), float32(y), unitGridSize, unitGridSize, 1, color.White, true)
-	if g.unitActive {
-		vector.StrokeRect(screen, float32(x), float32(y), unitGridSize, unitGridSize, 1, color.RGBA{255, 255, 0, 200}, true)
+	if isObject {
+		layer = LayerObjects
+		yOffset = -0.5 * float64(tileHeight) // same as “-16” magic number
 	}
 
-	// Draw the unit image scaled to grid size
+	id := g.layers[layer][y][x]
+	img, ok := g.tileSet[id]
+	if !ok || img == nil {
+		return
+	}
+
+	screenX := (float64(x)*0.5*tileWidth + float64(y)*-0.5*tileHeight) + centerX
+	screenY := (float64(x)*0.25*tileWidth + float64(y)*0.25*tileHeight) + centerY + yOffset
+
 	opts := &ebiten.DrawImageOptions{}
-	scaleX := float64(unitGridSize) / float64(assets.UnitImg.Bounds().Dx())
-	scaleY := float64(unitGridSize) / float64(assets.UnitImg.Bounds().Dy())
-	opts.GeoM.Scale(scaleX, scaleY)
-	opts.GeoM.Translate(x, y)
-	screen.DrawImage(assets.UnitImg, opts)
+	opts.GeoM.Translate(screenX-anchorX, screenY)
+
+	// Highlight selected tile
+	if x == g.selectedTileX && y == g.selectedTileY {
+		if isObject {
+			opts.ColorScale.Scale(1.5, 0.5, 0.5, 1.0) // reddish highlight
+		} else {
+			opts.ColorScale.Scale(1.5, 1.5, 0.5, 1.0) // yellowish highlight
+		}
+	}
+
+	screen.DrawImage(img, opts)
 }
