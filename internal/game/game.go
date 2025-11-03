@@ -3,13 +3,11 @@ package game
 import (
 	"math"
 
-	"github.com/hajimehoshi/ebiten"
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func NewGame() *game {
-	return &game{
-		
-	}
+	return &game{}
 }
 
 func (g *game) Update() error {

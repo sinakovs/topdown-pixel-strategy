@@ -3,8 +3,10 @@ package world
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"sync"
+	"time"
 
 	chunkrepo "github.com/sinakovs/topdown-pixel-strategy/internal/chunkRepo"
 )
@@ -15,7 +17,15 @@ const (
 	WorldSizeInChunks = 16
 )
 
-func New(repo chunkrepo.ChunkRepository, chunkCols, chunkRows int) *world {
+func New(
+	repo chunkrepo.ChunkRepository,
+	chunkCols, chunkRows int,
+	tickRate uint,
+) (*world, error) {
+	if tickRate <= 0 {
+		return nil, fmt.Errorf("invalid tickrate %d", tickRate)
+	}
+
 	return &world{
 		repo: repo,
 		Visibility: VisibilityPolicy{
@@ -23,16 +33,27 @@ func New(repo chunkrepo.ChunkRepository, chunkCols, chunkRows int) *world {
 			IncludeSelfChunk: true,
 			Mode:             NeighbourMoore,
 		},
-		players:    make(map[PlayerID]*player),
-		units:      make(map[UnitID]*unit),
-		chunkCache: make(map[chunkrepo.ChunkKey]*chunkrepo.Chunk),
-	}
+		tickRate:         tickRate,
+		subscribersMutex: new(sync.RWMutex),
+		subscribers:      make(map[PlayerID]chan struct{}),
+		players:          make(map[PlayerID]*player),
+		units:            make(map[UnitID]*unit),
+		chunkCache:       make(map[chunkrepo.ChunkKey]*chunkrepo.Chunk),
+	}, nil
 }
 
 type world struct {
 	repo chunkrepo.ChunkRepository
+
 	// Policy controlling which chunks a player may render around each unit.
 	Visibility VisibilityPolicy
+
+	// Config
+	tickRate uint
+
+	subscribersMutex *sync.RWMutex
+	subscribers      map[PlayerID]chan struct{}
+
 	// State
 	mu      sync.RWMutex
 	players map[PlayerID]*player
@@ -41,6 +62,60 @@ type world struct {
 	// Optional RAM cache to avoid decoding the same chunk repeatedly.
 	chunkMu    sync.RWMutex
 	chunkCache map[chunkrepo.ChunkKey]*chunkrepo.Chunk
+}
+
+func (w *world) Start() {
+	ticker := time.NewTicker(time.Second / time.Duration(w.tickRate))
+	go func() {
+		for range ticker.C {
+			w.update()
+			w.notify()
+		}
+	}()
+
+}
+
+// TODO:
+func (w *world) Stop() error {
+	return nil
+}
+
+func (w *world) update() error {
+	return nil
+}
+
+func (w *world) notify() {
+	w.subscribersMutex.RLock()
+	defer w.subscribersMutex.RUnlock()
+
+	for _, subChan := range w.subscribers {
+		select {
+		case subChan <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (w *world) Subscribe(playerId PlayerID) <-chan struct{} {
+	updateCh := make(chan struct{}, 1)
+
+	w.subscribersMutex.Lock()
+	defer w.subscribersMutex.Unlock()
+
+	w.subscribers[playerId] = updateCh
+
+	return updateCh
+}
+
+func (w *world) Unsubscribe(playerId PlayerID) {
+	w.subscribersMutex.Lock()
+	defer w.subscribersMutex.Unlock()
+
+	updateCh := w.subscribers[playerId]
+
+	delete(w.subscribers, playerId)
+
+	close(updateCh)
 }
 
 // ChunksForPlayer returns the authoritative list of chunks the player is allowed

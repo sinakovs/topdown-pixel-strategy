@@ -3,7 +3,8 @@ package game
 import (
 	"image/color"
 
-	"github.com/hajimehoshi/ebiten"
+	"github.com/hajimehoshi/ebiten/v2"
+	chunkrepo "github.com/sinakovs/topdown-pixel-strategy/internal/chunkRepo"
 )
 
 type Drawable struct {
@@ -19,8 +20,8 @@ func (g *game) Draw(screen *ebiten.Image) {
 	centerX := float64(screenWidth) / 2
 	centerY := float64(screenHeight) / 4
 	anchorX := float64(tileWidth) / 2
-	widthInTiles := len(g.layers[LayerGround][0])
-	heightInTiles := len(g.layers[LayerGround])
+	widthInTiles := len(g.layers[chunkrepo.LayerGround][0])
+	heightInTiles := len(g.layers[chunkrepo.LayerGround])
 
 	for y := 0; y < heightInTiles; y++ {
 		for x := 0; x < widthInTiles; x++ {
@@ -37,11 +38,11 @@ func (g *game) drawTile(
 	centerX, centerY, anchorX float64,
 	isObject bool,
 ) {
-	layer := LayerGround
+	layer := chunkrepo.LayerGround
 	yOffset := 0.0
 
 	if isObject {
-		layer = LayerObjects
+		layer = chunkrepo.LayerObjects
 		yOffset = -0.5 * float64(tileHeight) // same as “-16” magic number
 	}
 
