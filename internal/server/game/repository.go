@@ -26,7 +26,9 @@ func New(
 
 func (g *gameserver) ListenAndServe() {
 	g.world.Start()
+
 	for {
+
 		client, err := g.clientListener.Accept()
 		if err != nil {
 			slog.Error(
@@ -34,7 +36,7 @@ func (g *gameserver) ListenAndServe() {
 				"error", err.Error(),
 			)
 		}
-
+		
 		go g.handleClient(client)
 	}
 }
@@ -46,6 +48,7 @@ func (g *gameserver) Shutdown() {
 
 // TODO: spawn unit (inside Subscribe())
 func (g *gameserver) handleClient(client client.Client) {
+
 	playerID := client.PlayerID()
 	updateChan := g.world.Subscribe(playerID)
 
@@ -56,6 +59,7 @@ func (g *gameserver) handleClient(client client.Client) {
 			slog.ErrorContext(
 				ctx,
 				"Failed to get chunks for player",
+
 				"player_id", playerID,
 				"error", err.Error(),
 			)
